@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PDFParse } from 'pdf-parse';
 import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
 import { CurriculumSchema } from '@/lib/schemas';
-import path from 'path';
-
-// Set the worker source to the actual file path so pdfjs-dist can find it
-// in the Next.js server environment (Turbopack bundles break the default resolution)
-const workerPath = path.join(
-  process.cwd(),
-  'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'
-);
-PDFParse.setWorker(workerPath);
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,33 +15,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert file to Uint8Array for pdf-parse
+    // Convert file to base64 for Gemini's native PDF support
     const arrayBuffer = await file.arrayBuffer();
-    const data = new Uint8Array(arrayBuffer);
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
 
-    // Parse PDF using pdf-parse v2 API
-    const pdfParser = new PDFParse({ data });
-    const textResult = await pdfParser.getText();
-    const text = textResult.text;
-    await pdfParser.destroy();
-
-    if (!text.trim()) {
-      return NextResponse.json(
-        { error: 'Could not extract text from PDF' },
-        { status: 400 }
-      );
-    }
-
-    // Use AI to structure the curriculum
+    // Use Gemini's native PDF understanding — no separate parsing needed
     const { object: curriculum } = await generateObject({
       model: google('gemini-2.5-flash'),
       schema: CurriculumSchema,
-      prompt: `Extract and structure the curriculum from the following PDF text. 
-      Create a hierarchical structure with subtopics and their topics. 
-      Assign importance weights (0-100) based on content emphasis.
-      
-      PDF Content:
-      ${text.substring(0, 3000)}`,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'file',
+              data: base64,
+              mediaType: 'application/pdf',
+            },
+            {
+              type: 'text',
+              text: `Extract and structure the curriculum from this PDF document. 
+Create a hierarchical structure with subtopics and their topics. 
+Assign importance weights (0-100) based on content emphasis.`,
+            },
+          ],
+        },
+      ],
     });
 
     return NextResponse.json(curriculum);
