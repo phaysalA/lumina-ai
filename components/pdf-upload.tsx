@@ -3,14 +3,21 @@
 import React, { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Curriculum } from '@/lib/schemas';
+import { Curriculum, DiagnosticQuiz } from '@/lib/schemas';
 
 interface PDFUploadProps {
-  onCurriculumLoaded: (curriculum: Curriculum) => void;
+  onDocumentParsed: (curriculum: Curriculum, diagnosticQuiz: DiagnosticQuiz) => void;
   isLoading?: boolean;
 }
 
-export function PDFUpload({ onCurriculumLoaded, isLoading: externalLoading = false }: PDFUploadProps) {
+const ACCEPTED_EXTENSIONS = ['.pdf', '.doc', '.docx'];
+const ACCEPTED_MIME_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+
+export function PDFUpload({ onDocumentParsed, isLoading: externalLoading = false }: PDFUploadProps) {
   const [dragging, setDragging] = React.useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -18,9 +25,15 @@ export function PDFUpload({ onCurriculumLoaded, isLoading: externalLoading = fal
 
   const isLoading = externalLoading || isParsing;
 
+  const isValidFile = (file: File): boolean => {
+    if (ACCEPTED_MIME_TYPES.includes(file.type)) return true;
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    return ACCEPTED_EXTENSIONS.includes(ext);
+  };
+
   const handleFile = async (file: File) => {
-    if (file.type !== 'application/pdf') {
-      alert('Please upload a PDF file');
+    if (!isValidFile(file)) {
+      alert('Please upload a PDF or Word document (.pdf, .doc, .docx)');
       return;
     }
 
@@ -37,14 +50,14 @@ export function PDFUpload({ onCurriculumLoaded, isLoading: externalLoading = fal
       });
 
       if (!response.ok) {
-        throw new Error('Failed to parse PDF');
+        throw new Error('Failed to parse document');
       }
 
-      const curriculum = await response.json();
-      onCurriculumLoaded(curriculum);
+      const { curriculum, diagnosticQuiz } = await response.json();
+      onDocumentParsed(curriculum, diagnosticQuiz);
     } catch (error) {
-      console.error('Error parsing PDF:', error);
-      alert('Failed to parse PDF. Please try again.');
+      console.error('Error parsing document:', error);
+      alert('Failed to parse document. Please try again.');
     } finally {
       setIsParsing(false);
       setFileName(null);
@@ -90,7 +103,7 @@ export function PDFUpload({ onCurriculumLoaded, isLoading: externalLoading = fal
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf"
+        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         onChange={handleFileInput}
         className="hidden"
         disabled={isLoading}
@@ -98,7 +111,6 @@ export function PDFUpload({ onCurriculumLoaded, isLoading: externalLoading = fal
 
       {isLoading ? (
         <div className="space-y-4 py-4">
-          {/* Spinner */}
           <div className="flex justify-center">
             <svg
               className="animate-spin h-10 w-10 text-primary"
@@ -123,12 +135,12 @@ export function PDFUpload({ onCurriculumLoaded, isLoading: externalLoading = fal
             </svg>
           </div>
           <div>
-            <h3 className="font-semibold text-lg mb-1">Parsing PDF...</h3>
+            <h3 className="font-semibold text-lg mb-1">Analyzing Document...</h3>
             {fileName && (
               <p className="text-sm text-muted-foreground mb-2">{fileName}</p>
             )}
             <p className="text-sm text-muted-foreground">
-              Extracting curriculum structure with AI. This may take a moment.
+              Extracting curriculum and preparing your diagnostic assessment. This may take a moment.
             </p>
           </div>
         </div>
@@ -136,9 +148,9 @@ export function PDFUpload({ onCurriculumLoaded, isLoading: externalLoading = fal
         <div className="space-y-4">
           <div className="text-4xl">📄</div>
           <div>
-            <h3 className="font-semibold text-lg mb-1">Upload Curriculum PDF</h3>
+            <h3 className="font-semibold text-lg mb-1">Upload Curriculum Document</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Drag and drop your curriculum PDF or click to browse
+              Drag and drop your PDF or Word document, or click to browse
             </p>
           </div>
           <Button
@@ -146,8 +158,11 @@ export function PDFUpload({ onCurriculumLoaded, isLoading: externalLoading = fal
             disabled={isLoading}
             className="bg-primary hover:bg-primary/90"
           >
-            Select PDF
+            Select File
           </Button>
+          <p className="text-xs text-muted-foreground mt-2">
+            Supports .pdf, .doc, .docx
+          </p>
         </div>
       )}
     </Card>
